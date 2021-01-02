@@ -15,6 +15,9 @@
 #define SERVER_PORT 1234
 #define QUEUE_SIZE 5 //fixed size - safe for the computer resources
 
+#define HERE() printf("I'm in %s @ %d\n", __func__, __LINE__)
+
+
 //mutexes for all the html files TODO : PUT will be problematic here
 pthread_mutex_t mutex_main = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_maple = PTHREAD_MUTEX_INITIALIZER;
@@ -24,7 +27,7 @@ pthread_mutex_t mutex_orchid = PTHREAD_MUTEX_INITIALIZER;
 //structure containing data to be send to the given thread
 struct thread_data_t
 {
-	int connection_socket_desciptor;
+	int connection_socket_descriptor;
 };
 
 void *ThreadBehavior(void *t_data)
@@ -33,38 +36,45 @@ void *ThreadBehavior(void *t_data)
     struct thread_data_t *th_data = (struct thread_data_t*)t_data;
     int error;
     char request_type[6]; //length of "delete"
-    char protocol_type[8] //length of HTTP/1.1 which is expected TODO : \r\n may occur
+    char protocol_type[8]; //length of HTTP/1.1 which is expected TODO : \r\n may occur
     char page[50]; //random buffer - length of monstera.html is 13 but sth longer may be put
     int thread_desc = th_data->connection_socket_descriptor;
-    if ((sscanf(thread_desc, "%s %s %s", request_type, page, protocol_type) == 3)){
+    char request_buffer[300];
+    HERE();
+    if (read(thread_desc, request_buffer, 300) < 0){
+        printf("Błąd przy próbie odczytania żądania.\n"); //TODO : error code
+    }
+    if ((sscanf(request_buffer, "%s %s %s", request_type, page, protocol_type) == 3)){
         //TODO: add strcmp(protocol_type, "HTTP/1.1") when it works
+        HERE();
         if (strcmp(request_type, "GET") == 0){
             //TODO : check if mutex' up
+            HERE();
             char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
             strcpy(file, "../resources");
             strcat(file, page);
             
             FILE *requested_file;
             requested_file = fopen(file, "r"); //TODO : r because GET - different for put/delete
-            
+            HERE();
             //find the size of the file and then get back to the beginning
             fseek(requested_file, 0L, SEEK_END);
-            file_size = ftell(requested_file);
+            int file_size = ftell(requested_file);
             fseek(requested_file, 0L, SEEK_SET);
-            
+            HERE();
             char buffer[file_size]; //TODO : putting the file here - scanf?
 
             for (int i = 0; i < file_size; i++){
                 fscanf(requested_file, "%c", &buffer[i]);
             }
-
+            HERE();
             //TODO : sent message OK 200 with added html        
     
         }
         else if (strcmp(request_type, "HEAD") == 0){}
     }
     //TODO : GET/HEAD/PUT/DELETE
-
+    HERE();
     pthread_exit(NULL);
 }
 
