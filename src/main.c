@@ -44,7 +44,7 @@ void *ThreadBehavior(void *t_data)
     if (read(thread_desc, request_buffer, 300) < 0){
         printf("Błąd przy próbie odczytania żądania.\n"); //TODO : error code
     }
-    if ((sscanf(request_buffer, "%s %s %s", request_type, page, protocol_type) == 3)){
+    if ((sscanf(request_buffer, "%s %s", request_type, page) == 2)){
         //TODO: add strcmp(protocol_type, "HTTP/1.1") when it works
         HERE();
         if (strcmp(request_type, "GET") == 0){
@@ -53,7 +53,7 @@ void *ThreadBehavior(void *t_data)
             char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
             strcpy(file, "../resources");
             strcat(file, page);
-            
+            printf("%s", file); 
             FILE *requested_file;
             requested_file = fopen(file, "r"); //TODO : r because GET - different for put/delete
             HERE();
@@ -61,6 +61,7 @@ void *ThreadBehavior(void *t_data)
             fseek(requested_file, 0L, SEEK_END);
             int file_size = ftell(requested_file);
             fseek(requested_file, 0L, SEEK_SET);
+            printf("%d\n", file_size);
             HERE();
             char buffer[file_size]; //TODO : putting the file here - scanf?
 
@@ -68,13 +69,26 @@ void *ThreadBehavior(void *t_data)
                 fscanf(requested_file, "%c", &buffer[i]);
             }
             HERE();
+            char buf[100];
+            int i1 = write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
+            int i2 = write(thread_desc, "Server: Tiny Web Server\r\n", 25);
+            snprintf(buf, 100, "Content-length: %d\r\n", file_size);
+            int i3 = write(thread_desc, buf, sizeof(char)*strlen(buf));
+            //write(thread_desc, &file_size, sizeof(file_size));
+            int i4 = write(thread_desc, "Content-type: text/html\r\n", 25);
+            int i5 = write(thread_desc, "\r\n", 2); 
+            int i6 = write(thread_desc, buffer, file_size);
+            printf("%d %d %d %d %d %d\n", i1, i2, i3, i4, i5, i6);
+            //write(thread_desc, "\r\n", 2);
             //TODO : sent message OK 200 with added html        
     
         }
         else if (strcmp(request_type, "HEAD") == 0){}
     }
     //TODO : GET/HEAD/PUT/DELETE
+    
     HERE();
+    //close(thread_desc);
     pthread_exit(NULL);
 }
 
