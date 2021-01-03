@@ -15,24 +15,88 @@
 #define SERVER_PORT 1234
 #define QUEUE_SIZE 5 //fixed size - safe for the computer resources
 
-//mutexes for all the html files
+#define HERE() printf("I'm in %s @ %d\n", __func__, __LINE__)
+
+
+//mutexes for all the html files TODO : PUT will be problematic here
 pthread_mutex_t mutex_main = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_maple = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_monstera = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_orchid = PTHREAD_MUTEX_INITIALIZER;
 
-//struktura zawierająca dane, które zostaną przekazane do wątku
+//structure containing data to be send to the given thread
 struct thread_data_t
 {
-	int connection_socket_desciptor;
+	int connection_socket_descriptor;
 };
 
 void *ThreadBehavior(void *t_data)
 {
     pthread_detach(pthread_self());
     struct thread_data_t *th_data = (struct thread_data_t*)t_data;
-    //TODO : GET/HEAD/PUT/DELETE
+    int error;
+    char request_type[6]; //length of "delete"
+    char protocol_type[8]; //length of HTTP/1.1 which is expected TODO : \r\n may occur
+    char page[50]; //random buffer - length of monstera.html is 13 but sth longer may be put
+    int thread_desc = th_data->connection_socket_descriptor;
+    char request_buffer[300];
+    if (read(thread_desc, request_buffer, 300) < 0){
+        printf("Błąd przy próbie odczytania żądania.\n"); //TODO : error code
+    }
+    if ((sscanf(request_buffer, "%s %s", request_type, page) == 2)){
+        //TODO: add strcmp(protocol_type, "HTTP/1.1") when it works
+        if (strcmp(request_type, "GET") == 0){
+            //TODO : check if mutex' up
+            char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
+            strcpy(file, "../resources");
+            strcat(file, page);
+            FILE *requested_file;
+            requested_file = fopen(file, "r"); //TODO : r because GET - different for put/delete
+            if (requested_file) {
+                //find the size of the file and then get back to the beginning
+                fseek(requested_file, 0L, SEEK_END);
+                int file_size = ftell(requested_file);
+                fseek(requested_file, 0L, SEEK_SET);
+                char buffer[file_size]; //TODO : putting the file here - scanf?
 
+                for (int i = 0; i < file_size; i++){
+                    fscanf(requested_file, "%c", &buffer[i]);
+                }
+                char buf[100];
+                write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
+                snprintf(buf, 100, "Content-length: %d\r\n", file_size);
+                write(thread_desc, buf, sizeof(char)*strlen(buf));
+                write(thread_desc, "Content-type: text/html\r\n", 25);
+                write(thread_desc, "\r\n", 2);
+                write(thread_desc, buffer, file_size);
+            } else {
+                write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
+            }
+        }
+        else if (strcmp(request_type, "HEAD") == 0){
+            char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
+            strcpy(file, "../resources");
+            strcat(file, page);
+            FILE *requested_file;
+            requested_file = fopen(file, "r"); //TODO : r because GET - different for put/delete
+            if (requested_file) {
+                //find the size of the file and then get back to the beginning
+                fseek(requested_file, 0L, SEEK_END);
+                int file_size = ftell(requested_file);
+                fseek(requested_file, 0L, SEEK_SET);
+                char buf[100];
+                write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
+                snprintf(buf, 100, "Content-length: %d\r\n", file_size);
+                write(thread_desc, buf, sizeof(char)*strlen(buf));
+                write(thread_desc, "Content-type: text/html\r\n", 25);
+                write(thread_desc, "\r\n", 2);
+            } else {
+                write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
+            }
+        }
+    }
+    //TODO : GET/HEAD/PUT/DELETE
+    close(thread_desc);
     pthread_exit(NULL);
 }
 
@@ -47,8 +111,6 @@ void handleConnection(int connection_socket_descriptor) {
        printf("Błąd przy próbie utworzenia wątku, kod błędu: %d\n", create_result);
        exit(-1);
     }
-
-    //TODO : GET/HEAD/PUT/DELETE
 }
 
 int main(int argc, char* argv[])
