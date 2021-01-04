@@ -17,12 +17,7 @@
 
 #define HERE() printf("I'm in %s @ %d\n", __func__, __LINE__)
 
-
-//mutexes for all the html files TODO : PUT will be problematic here
-pthread_mutex_t mutex_main = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_maple = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_monstera = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_orchid = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_server = PTHREAD_MUTEX_INITIALIZER;
 
 //structure containing data to be send to the given thread
 struct thread_data_t
@@ -42,6 +37,7 @@ void *ThreadBehavior(void *t_data)
     char request_buffer[300];
     char buf[1];
     int i = 0;
+    pthread_mutex_lock(&mutex_server);
     while (read(thread_desc, buf, 1) > 0){
         if (buf[0] == '\n') {
             break;
@@ -172,12 +168,13 @@ void *ThreadBehavior(void *t_data)
             fclose(requested_file);
         }
         else if (strcmp(request_type, "DELETE") == 0) {
-
+            
         }
         else {
             //TODO wrong request
         }
     }
+    pthread_mutex_unlock(&mutex_server);
     close(thread_desc);
     pthread_exit(NULL);
 }
