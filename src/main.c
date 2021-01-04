@@ -159,21 +159,30 @@ void *ThreadBehavior(void *t_data)
                 write(thread_desc, "HTTP/1.1 201 Created\r\n", 22);
             } else {
                 HERE();
-                write(thread_desc, "HTTP/1.1 204 No Content\r\n", 25);
-                //snprintf(buf, 100, "Content-Location: %s\r\n", page);
-                //printf("%s\n", buf);
-                //write(thread_desc, buf, sizeof(char) * strlen(buf));
+                write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
+                snprintf(buf, 100, "Content-Location: %s\r\n", page);
+                printf("%s\n", buf);
+                write(thread_desc, buf, sizeof(char) * strlen(buf));
             }
             HERE();
             fclose(requested_file);
         }
         else if (strcmp(request_type, "DELETE") == 0) {
-            
+            char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
+            strcpy(file, "../resources");
+            strcat(file, page);
+            int del = remove(file);
+            if (!del) {
+                write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
+            } else {
+                write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
+            }
         }
         else {
-            //TODO wrong request
+            write(thread_desc, "HTTP/1.1 501 Not Implemented\r\n", 30);
         }
     }
+    free(th_data);
     pthread_mutex_unlock(&mutex_server);
     close(thread_desc);
     pthread_exit(NULL);
