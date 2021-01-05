@@ -215,13 +215,18 @@ int main(int argc, char* argv[])
    int listen_result;
    char reuse_addr_val = 1;
    struct sockaddr_in server_address;
-
    //initialization of the server socket
    
    memset(&server_address, 0, sizeof(struct sockaddr));
    server_address.sin_family = AF_INET;
    server_address.sin_addr.s_addr = htonl(INADDR_ANY);
-   server_address.sin_port = htons(SERVER_PORT);
+   if (argc == 1) {
+       server_address.sin_port = htons(SERVER_PORT);
+   } else {
+       char *a = argv[1];
+       int server_port = atoi(a);
+       server_address.sin_port = htons(server_port);
+   }
    server_socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
    
 if (server_socket_descriptor < 0)
