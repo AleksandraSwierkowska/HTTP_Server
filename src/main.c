@@ -67,14 +67,15 @@ void *ThreadBehavior(void *t_data)
                 }
                 char buf[100];
                 write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
-                snprintf(buf, 100, "Content-length: %d\r\n", file_size);
+                snprintf(buf, 100, "Content-Length: %d\r\n", file_size);
                 write(thread_desc, buf, sizeof(char)*strlen(buf));
-                write(thread_desc, "Content-type: text/html\r\n", 25);
+                write(thread_desc, "Content-Type: text/html\r\n", 25);
                 write(thread_desc, "\r\n", 2);
                 write(thread_desc, buffer, file_size);
                 fclose(requested_file);
             } else {
                 write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
+                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
             }
         }
         else if (strcmp(request_type, "HEAD") == 0){
@@ -90,17 +91,17 @@ void *ThreadBehavior(void *t_data)
                 fseek(requested_file, 0L, SEEK_SET);
                 char buf[100];
                 write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
-                snprintf(buf, 100, "Content-length: %d\r\n", file_size);
+                snprintf(buf, 100, "Content-Length: %d\r\n", file_size);
                 write(thread_desc, buf, sizeof(char)*strlen(buf));
-                write(thread_desc, "Content-type: text/html\r\n", 25);
+                write(thread_desc, "Content-Type: text/html\r\n", 25);
                 write(thread_desc, "\r\n", 2);
                 fclose(requested_file);
             } else {
                 write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
+                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
             }
         }
         else if (strcmp(request_type, "PUT") == 0) {
-            write(thread_desc, "HTTP/1.1 202 Accepted\r\n", 23);
             char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
             strcpy(file, "../resources");
             strcat(file, page);
@@ -113,7 +114,7 @@ void *ThreadBehavior(void *t_data)
             if (!requested_file) {
                 //TODO error
             }
-            char content_length[15] = "ontent-length: ";
+            char content_length[15] = "ontent-Length: ";
             int i = 0;
             char length[10];
             while (read(thread_desc, buf, 1) > 0){
@@ -157,12 +158,14 @@ void *ThreadBehavior(void *t_data)
             char buf[100];
             if (file_exists == 0) {
                 write(thread_desc, "HTTP/1.1 201 Created\r\n", 22);
+                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
             } else {
                 HERE();
                 write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
-                snprintf(buf, 100, "Content-Location: %s\r\n", page);
-                printf("%s\n", buf);
-                write(thread_desc, buf, sizeof(char) * strlen(buf));
+                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
+                //snprintf(buf, 100, "Content-Location: %s\r\n", page);
+                //printf("%s\n", buf);
+                //write(thread_desc, buf, sizeof(char) * strlen(buf));
             }
             HERE();
             fclose(requested_file);
@@ -173,17 +176,20 @@ void *ThreadBehavior(void *t_data)
             strcat(file, page);
             int del = remove(file);
             if (!del) {
-                write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
+                write(thread_desc, "HTTP/1.1 204 No Content\r\n", 25);
+                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
             } else {
                 write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
+                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
             }
         }
         else {
             write(thread_desc, "HTTP/1.1 501 Not Implemented\r\n", 30);
+            write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
         }
     }
-    free(th_data);
     pthread_mutex_unlock(&mutex_server);
+    free(th_data);
     close(thread_desc);
     pthread_exit(NULL);
 }
