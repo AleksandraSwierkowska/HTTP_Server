@@ -168,7 +168,7 @@ void *ThreadBehavior(void *t_data) {
             if (file_exists == 0) {
                 sendResponse(thread_desc, 201, "Created", -1);
             } else {
-                sendResponse(thread_desc, 200, "OK", -1);
+                sendResponse(thread_desc, 204, "No Content", -1);
             }
             fclose(requested_file);
         } else if (strcmp(request_type, "DELETE") == 0) {
