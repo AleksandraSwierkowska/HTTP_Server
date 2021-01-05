@@ -34,7 +34,7 @@ void sendResponse(int thread_desc, int status, char* message, int length) {
 void *ThreadBehavior(void *t_data) {
     pthread_detach(pthread_self());
     struct thread_data_t *th_data = (struct thread_data_t *) t_data;
-    char request_type[6]; //length of "delete"
+    char request_type[10];
     char protocol_type[10]; //length of HTTP/1.1\r\n which is expected
     char page[50]; //random buffer - length of monstera.html is 13 but sth longer may be put
     int thread_desc = th_data->connection_socket_descriptor;
@@ -61,7 +61,6 @@ void *ThreadBehavior(void *t_data) {
             close(thread_desc);
             pthread_exit(NULL);
         }
-
         char *file = filePath(page);
         pthread_mutex_lock(&mutex_server);
 
@@ -123,7 +122,7 @@ void *ThreadBehavior(void *t_data) {
                 } else {
                     matched_content = 0;
                 }
-                if (matched_content == strlen(content)) {
+                if (matched_content == 16) {
                     matched_content = 0;
                     while (read(thread_desc, buf, 1) > 0) {
                         if (buf[0] == '\n') {
@@ -141,8 +140,7 @@ void *ThreadBehavior(void *t_data) {
                 } else {
                     n_count = 0;
                 }
-                if (n_count == strlen(ending)) {
-                    n_count = 0;
+                if (n_count == 4) {
                     break;
                 }
             }
