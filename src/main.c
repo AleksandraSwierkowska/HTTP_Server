@@ -20,24 +20,36 @@
 pthread_mutex_t mutex_server = PTHREAD_MUTEX_INITIALIZER;
 
 //structure containing data to be send to the given thread
-struct thread_data_t
-{
+struct thread_data_t {
 	int connection_socket_descriptor;
 };
 
-void *ThreadBehavior(void *t_data)
-{
+char* filePath(char* page) {
+    char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
+    strcpy(file, "../resources");
+    strcat(file, page);
+    return file;
+}
+
+void sendResponse(int thread_desc, int status, char* message) {
+    char buf[100];
+    snprintf(buf, 100, "HTTP/1.1 %d %s\r\n", status, message);
+    write(thread_desc, buf, sizeof(char)*strlen(buf));
+    write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
+}
+
+void *ThreadBehavior(void *t_data) {
     pthread_detach(pthread_self());
     struct thread_data_t *th_data = (struct thread_data_t*)t_data;
     int error;
     char request_type[6]; //length of "delete"
-    char protocol_type[8]; //length of HTTP/1.1 which is expected TODO : \r\n may occur
+    char protocol_type[10]; //length of HTTP/1.1\r\n which is expected
     char page[50]; //random buffer - length of monstera.html is 13 but sth longer may be put
     int thread_desc = th_data->connection_socket_descriptor;
     char request_buffer[300];
-    char buf[1];
     int i = 0;
-    pthread_mutex_lock(&mutex_server);
+    char buf[1];
+    //414 URI too long
     while (read(thread_desc, buf, 1) > 0){
         if (buf[0] == '\n') {
             break;
@@ -46,75 +58,72 @@ void *ThreadBehavior(void *t_data)
         i++;
         //TODO error
     }
-    if ((sscanf(request_buffer, "%s %s", request_type, page) == 2)){
-        //TODO: add strcmp(protocol_type, "HTTP/1.1") when it works
-        if (strcmp(request_type, "GET") == 0){
-            //TODO : check if mutex' up
-            char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
-            strcpy(file, "../resources");
-            strcat(file, page);
+
+    if ((sscanf(request_buffer, "%s %s %s", request_type, page, protocol_type) == 3)) {
+
+        if (strcmp(protocol_type, "HTTP/1.1") != 0) {
+            sendResponse(thread_desc, 505, "HTTP Version Not Supported");
+            free(th_data);
+            close(thread_desc);
+            pthread_exit(NULL);
+        }
+
+        char *file = filePath(page);
+        pthread_mutex_lock(&mutex_server);
+
+        if (strcmp(request_type, "GET") == 0) {
             FILE *requested_file;
-            requested_file = fopen(file, "r"); //TODO : r because GET - different for put/delete
+            requested_file = fopen(file, "r");
             if (requested_file) {
                 //find the size of the file and then get back to the beginning
                 fseek(requested_file, 0L, SEEK_END);
                 int file_size = ftell(requested_file);
                 fseek(requested_file, 0L, SEEK_SET);
-                char buffer[file_size]; //TODO : putting the file here - scanf?
-
+                char buffer[file_size];
                 for (int i = 0; i < file_size; i++){
                     fscanf(requested_file, "%c", &buffer[i]);
                 }
-                char buf[100];
                 write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
-                snprintf(buf, 100, "Content-Length: %d\r\n", file_size);
-                write(thread_desc, buf, sizeof(char)*strlen(buf));
                 write(thread_desc, "Content-Type: text/html\r\n", 25);
-                write(thread_desc, "\r\n", 2);
-                write(thread_desc, buffer, file_size);
+                char buf[100];
+                snprintf(buf, 100, "Content-Length: %d\r\n\r\n", file_size);
+                write(thread_desc, buf, sizeof(char)*strlen(buf));
+                write(thread_desc, buffer, file_size); //send response body
                 fclose(requested_file);
             } else {
-                write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
-                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
+                sendResponse(thread_desc, 404, "Not Found");
             }
         }
         else if (strcmp(request_type, "HEAD") == 0){
-            char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
-            strcpy(file, "../resources");
-            strcat(file, page);
             FILE *requested_file;
-            requested_file = fopen(file, "r"); //TODO : r because GET - different for put/delete
+            requested_file = fopen(file, "r");
             if (requested_file) {
                 //find the size of the file and then get back to the beginning
                 fseek(requested_file, 0L, SEEK_END);
                 int file_size = ftell(requested_file);
                 fseek(requested_file, 0L, SEEK_SET);
-                char buf[100];
                 write(thread_desc, "HTTP/1.1 200 OK\r\n", 17);
-                snprintf(buf, 100, "Content-Length: %d\r\n", file_size);
-                write(thread_desc, buf, sizeof(char)*strlen(buf));
                 write(thread_desc, "Content-Type: text/html\r\n", 25);
-                write(thread_desc, "\r\n", 2);
+                char buf[100];
+                snprintf(buf, 100, "Content-Length: %d\r\n\r\n", file_size);
+                write(thread_desc, buf, sizeof(char)*strlen(buf));
                 fclose(requested_file);
             } else {
-                write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
-                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
+                sendResponse(thread_desc, 404, "Not Found");
             }
         }
         else if (strcmp(request_type, "PUT") == 0) {
-            char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
-            strcpy(file, "../resources");
-            strcat(file, page);
-            short file_exists = 0;
-            if( access( file, F_OK ) == 0 ) {
+            short file_exists = 0; //check if file exists for appropriate response
+            if ( access( file, F_OK ) == 0 ) {
                 file_exists = 1;
             }
+
             FILE *requested_file;
             requested_file = fopen(file, "w");
             if (!requested_file) {
                 //TODO error
             }
-            char content_length[15] = "ontent-Length: ";
+            char content_length[15] = "ontent-Length: "; //TODO 411 length required
             int i = 0;
             char length[10];
             while (read(thread_desc, buf, 1) > 0){
@@ -170,22 +179,17 @@ void *ThreadBehavior(void *t_data)
             HERE();
             fclose(requested_file);
         }
+
         else if (strcmp(request_type, "DELETE") == 0) {
-            char *file = malloc(strlen("../resources") + strlen(page) + 1); // +1 for the null-terminator
-            strcpy(file, "../resources");
-            strcat(file, page);
             int del = remove(file);
             if (!del) {
-                write(thread_desc, "HTTP/1.1 204 No Content\r\n", 25);
-                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
+                sendResponse(thread_desc, 204, "No Content");
             } else {
-                write(thread_desc, "HTTP/1.1 404 Not Found\r\n", 24);
-                write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
+                sendResponse(thread_desc, 404, "Not Found");
             }
         }
         else {
-            write(thread_desc, "HTTP/1.1 501 Not Implemented\r\n", 30);
-            write(thread_desc, "Content-type: text/html\r\n\r\n", 27);
+            sendResponse(thread_desc, 501, "Not Implemented");
         }
     }
     pthread_mutex_unlock(&mutex_server);
@@ -198,7 +202,7 @@ void *ThreadBehavior(void *t_data)
 void handleConnection(int connection_socket_descriptor) {
     int create_result = 0;
     pthread_t thread1;
-    struct thread_data_t *t_data = (struct thread_data_t *) malloc(sizeof(struct thread_data_t)); //TODO : maybe put fixed size here?
+    struct thread_data_t *t_data = (struct thread_data_t *) malloc(sizeof(struct thread_data_t));
     t_data->connection_socket_descriptor = connection_socket_descriptor;
     create_result = pthread_create(&thread1, NULL, ThreadBehavior, (void *)t_data);
     if (create_result){
@@ -207,8 +211,7 @@ void handleConnection(int connection_socket_descriptor) {
     }
 }
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
    int server_socket_descriptor;
    int connection_socket_descriptor;
    int bind_result;
@@ -229,8 +232,7 @@ int main(int argc, char* argv[])
    }
    server_socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
    
-if (server_socket_descriptor < 0)
-   {
+if (server_socket_descriptor < 0) {
        fprintf(stderr, "%s: Błąd przy próbie utworzenia gniazda..\n", argv[0]);
        exit(1);
    }
@@ -239,8 +241,7 @@ if (server_socket_descriptor < 0)
 
    bind_result = bind(server_socket_descriptor, (struct sockaddr*)&server_address, sizeof(struct sockaddr));
    
-   if (bind_result < 0)
-   {
+   if (bind_result < 0) {
        fprintf(stderr, "%s: Błąd przy próbie dowiązania adresu IP i numeru portu do gniazda.\n", argv[0]);
        exit(1);
    }
@@ -252,11 +253,9 @@ if (server_socket_descriptor < 0)
        exit(1);
    }
 
-   while(1)
-   {
+   while(1) {
        connection_socket_descriptor = accept(server_socket_descriptor, NULL, NULL);
-       if (connection_socket_descriptor < 0)
-       {
+       if (connection_socket_descriptor < 0) {
            fprintf(stderr, "%s: Błąd przy próbie utworzenia gniazda dla połączenia.\n", argv[0]);
            exit(1);
        }
