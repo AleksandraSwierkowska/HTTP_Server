@@ -105,9 +105,14 @@ void *ThreadBehavior(void *t_data) {
             FILE *requested_file;
             requested_file = fopen(file, "w");
             if (!requested_file) {
-                //TODO error
+                sendResponse(thread_desc, 500, "Internal Server Error", -1);
+                pthread_mutex_unlock(&mutex_server);
+                free(th_data);
+                close(thread_desc);
+                pthread_exit(NULL);      
             }
-            char content[16] = "Content-Length: "; //TODO 411 length required
+            short gotContentLength = 0;
+            char content[16] = "Content-Length: "; 
             char ending[4] = "\r\n\r\n";
             int matched_content = 0;
             int n_count = 0;
@@ -127,6 +132,7 @@ void *ThreadBehavior(void *t_data) {
                         length[matched_content] = buf[0];
                         matched_content++;
                     }
+                    gotContentLength = 1;
                     //reading the length until the \n is found
                     matched_content = 0;
                 }
@@ -147,6 +153,13 @@ void *ThreadBehavior(void *t_data) {
                 close(thread_desc);
                 pthread_exit(NULL);
             }
+            if (gotContentLength == 0){
+                sendResponse(thread_desc, 411, "Length Required", -1);
+                pthread_mutex_unlock(&mutex_server);
+                free(th_data);
+                close(thread_desc);
+                pthread_exit(NULL);
+            } 
             int size = atoi(length);
             for (int i = 0; i < size; i++) {
                 read(thread_desc, buf, 1);
