@@ -4,8 +4,6 @@
 #include <string.h>
 #include <unistd.h>
 
-//mutex allowing/blocking access to the server
-pthread_mutex_t mutex_server = PTHREAD_MUTEX_INITIALIZER;
 //structure containing data to be send to the given thread
 struct thread_data_t {
     int connection_socket_descriptor;
@@ -77,7 +75,6 @@ void *ThreadBehavior(void *t_data) {
             pthread_exit(NULL);
         }
         char *file = filePath(page);
-        pthread_mutex_lock(&mutex_server);
 
         if (strcmp(request_type, "GET") == 0) {
             FILE *requested_file;
@@ -120,15 +117,6 @@ void *ThreadBehavior(void *t_data) {
                 file_exists = 1;
             }
 
-            FILE *requested_file;
-            requested_file = fopen(file, "w");
-            if (!requested_file) {
-                sendResponse(thread_desc, 500, "Internal Server Error", -1);
-                pthread_mutex_unlock(&mutex_server);
-                free(th_data);
-                close(thread_desc);
-                pthread_exit(NULL);
-            }
             short gotContentLength = 0;
             char content[16] = "Content-Length: ";
             char ending[4] = "\r\n\r\n";
@@ -168,22 +156,53 @@ void *ThreadBehavior(void *t_data) {
                 exit(-1);
             } else if (error < 0) {
                 sendResponse(thread_desc, 500, "Internal Server Error", -1);
-                pthread_mutex_unlock(&mutex_server);
                 free(th_data);
                 close(thread_desc);
                 pthread_exit(NULL);
             }
             if (gotContentLength == 0){
                 sendResponse(thread_desc, 411, "Length Required", -1);
-                pthread_mutex_unlock(&mutex_server);
                 free(th_data);
                 close(thread_desc);
                 pthread_exit(NULL);
             }
             int size = atoi(length);
+
+            // create temporary file for writing
+            char tmp_name[50];
+            memset(tmp_name,0,sizeof(tmp_name));
+            strcpy(tmp_name, "resources/tmp/XXXXXX");
+            mkstemp(tmp_name);
+            FILE *tmp_file;
+            tmp_file = fopen(tmp_name, "w");
+            if (!tmp_file) {
+                sendResponse(thread_desc, 500, "Internal Server Error", -1);
+                free(th_data);
+                close(thread_desc);
+                pthread_exit(NULL);
+            }
+
             for (int i = 0; i < size; i++) {
                 error = read(thread_desc, buf, 1);
-                fputc(buf[0], requested_file);
+
+                if (error < 0) {
+                    sendResponse(thread_desc, 500, "Internal Server Error", -1);
+                    free(th_data);
+                    close(thread_desc);
+                    pthread_exit(NULL);
+                } //TODO error == 0
+
+                fputc(buf[0], tmp_file); //TODO error with writing
+            }
+            error = rename(tmp_name, file);
+            remove(tmp_name);
+            if (error < 0) {
+                if (!tmp_file) {
+                    sendResponse(thread_desc, 500, "Internal Server Error", -1);
+                    free(th_data);
+                    close(thread_desc);
+                    pthread_exit(NULL);
+                }
             }
             if (error == 0) {
                 printf("Nastąpiło nieoczekiwane rozłączenie z klientem\n");
@@ -201,7 +220,7 @@ void *ThreadBehavior(void *t_data) {
             } else {
                 sendResponse(thread_desc, 204, "No Content", -1);
             }
-            fclose(requested_file);
+            fclose(tmp_file);
         } else if (strcmp(request_type, "DELETE") == 0) {
             int del = remove(file);
             if (!del) {
@@ -215,7 +234,6 @@ void *ThreadBehavior(void *t_data) {
     } else {
         sendResponse(thread_desc, 400, "Bad Request", -1);
     }
-    pthread_mutex_unlock(&mutex_server);
     free(th_data);
     close(thread_desc);
     pthread_exit(NULL);
