@@ -17,28 +17,48 @@ char* filePath(char* page) {
     return file;
 }
 
+void shiftLeft (char* string, int number) {
+    int size = strlen(string);
+    if (number >= size) {
+        memset(string,'\0',size);
+        return;
+    }
+
+    for (int i = 0; i < size-number; i++) {
+        string[i] = string[i + number];
+        string[i + number] = '\0';
+    }
+}
+
+void writeToThread(int thread_desc, char* message) {
+    int size = sizeof(char) * strlen(message);
+    int bytes_sent;
+    while ((bytes_sent = write(thread_desc, message, size)) > 0) {
+        size -= bytes_sent;
+        if (size == 0) {
+            break;
+        } else {
+            shiftLeft(message, bytes_sent);
+        }
+    }
+
+    if (bytes_sent < 0) {
+        printf("Błąd przy wysyłaniu odpowiedzi\n");
+        exit(-1);
+    }
+}
+
 //sending http response to the client
 void sendResponse(int thread_desc, int status, char* message, int length) {
     char buf[100];
     snprintf(buf, 100, "HTTP/1.1 %d %s\r\n", status, message);
-    int err = write(thread_desc, buf, sizeof(char)*strlen(buf));
-    if (err < 0) {
-        printf("Błąd przy wysyłaniu odpowiedzi, kod błędu: %d\n", err);
-        exit(-1);
-    }
+    writeToThread(thread_desc, buf);
+
     if (length >= 0) { // negative number means we don't want to send length
         snprintf(buf, 100, "Content-Length: %d\r\n", length);
-        err = write(thread_desc, buf, sizeof(char)*strlen(buf));
-        if (err < 0) {
-            printf("Błąd przy wysyłaniu odpowiedzi, kod błędu: %d\n", err);
-            exit(-1);
-        }
+        writeToThread(thread_desc, buf);
     }
-    err = write(thread_desc, "Content-Type: text/html\r\n\r\n", 27);
-    if (err < 0) {
-        printf("Błąd przy wysyłaniu odpowiedzi, kod błędu: %d\n", err);
-        exit(-1);
-    }
+    writeToThread(thread_desc, "Content-Type: text/html\r\n\r\n");
 }
 
 void *ThreadBehavior(void *t_data) {
@@ -65,6 +85,9 @@ void *ThreadBehavior(void *t_data) {
         exit(-1);
     } else if (error < 0) {
         sendResponse(thread_desc, 500, "Internal Server Error", -1);
+        free(th_data);
+        close(thread_desc);
+        pthread_exit(NULL);
     }
 
     if ((sscanf(request_buffer, "%s %s %s", request_type, page, protocol_type) == 3)) {
@@ -89,11 +112,7 @@ void *ThreadBehavior(void *t_data) {
                     fscanf(requested_file, "%c", &buffer[i]);
                 }
                 sendResponse(thread_desc, 200, "OK", file_size);
-                int err = write(thread_desc, buffer, file_size); //send response body
-                if (err < 0) {
-                    printf("Błąd przy wysyłaniu odpowiedzi, kod błędu: %d\n", err);
-                    exit(-1);
-                }
+                writeToThread(thread_desc, buffer); //send response body
                 fclose(requested_file);
             } else {
                 sendResponse(thread_desc, 404, "Not Found", -1);
@@ -184,43 +203,28 @@ void *ThreadBehavior(void *t_data) {
 
             for (int i = 0; i < size; i++) {
                 error = read(thread_desc, buf, 1);
-
-                if (error < 0) {
-                    sendResponse(thread_desc, 500, "Internal Server Error", -1);
-                    free(th_data);
-                    close(thread_desc);
-                    pthread_exit(NULL);
-                } //TODO error == 0
-
-                fputc(buf[0], tmp_file); //TODO error with writing
-            }
-            error = rename(tmp_name, file);
-            remove(tmp_name);
-            if (error < 0) {
-                if (!tmp_file) {
+                if (error == 0) {
+                    printf("Nastąpiło nieoczekiwane rozłączenie z klientem\n");
+                    exit(-1);
+                } else if (error < 0) {
                     sendResponse(thread_desc, 500, "Internal Server Error", -1);
                     free(th_data);
                     close(thread_desc);
                     pthread_exit(NULL);
                 }
-            }
-            if (error == 0) {
-                printf("Nastąpiło nieoczekiwane rozłączenie z klientem\n");
-                exit(-1);
-            } else if (error < 0) {
-                sendResponse(thread_desc, 500, "Internal Server Error", -1);
-                pthread_mutex_unlock(&mutex_server);
-                free(th_data);
-                close(thread_desc);
-                pthread_exit(NULL);
+
+                while (fputc(buf[0], tmp_file) == 0) {}
             }
 
+            rename(tmp_name, file);
+            remove(tmp_name);
             if (file_exists == 0) {
                 sendResponse(thread_desc, 201, "Created", -1);
             } else {
                 sendResponse(thread_desc, 204, "No Content", -1);
             }
             fclose(tmp_file);
+
         } else if (strcmp(request_type, "DELETE") == 0) {
             int del = remove(file);
             if (!del) {
